@@ -1,0 +1,66 @@
+{
+  "name": "RecruForce2 - Interview Reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "cronExpression", "expression": "0 9 * * *"}]
+        }
+      },
+      "name": "Schedule - Daily 9AM",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_API_URL }}/api/interviews/upcoming",
+        "method": "GET"
+      },
+      "name": "Fetch Upcoming Interviews",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "from": "={{ $env.SMTP_FROM }}",
+        "to": "={{ $item.candidateEmail }}",
+        "subject": "Rappel - Entretien demain",
+        "emailFormat": "html",
+        "html": "<h2>Bonjour {{ $item.candidateName }},</h2><p>Rappel de votre entretien demain:</p><p><strong>Date:</strong> {{ $item.dateTime }}</p><p><strong>Durée:</strong> {{ $item.durationMinutes }} min</p><p><strong>Lien:</strong> {{ $item.videoLink || $item.location }}</p>"
+      },
+      "name": "Email to Candidate",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "from": "={{ $env.SMTP_FROM }}",
+        "to": "={{ $item.interviewerEmail }}",
+        "subject": "Rappel - Entretien avec {{ $item.candidateName }}",
+        "emailFormat": "html",
+        "html": "<h2>Entretien demain</h2><p><strong>Candidat:</strong> {{ $item.candidateName }}</p><p><strong>Poste:</strong> {{ $item.jobOfferTitle }}</p><p><strong>Date:</strong> {{ $item.dateTime }}</p>"
+      },
+      "name": "Email to Interviewer",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [650, 400]
+    }
+  ],
+  "connections": {
+    "Schedule - Daily 9AM": {
+      "main": [[{"node": "Fetch Upcoming Interviews"}]]
+    },
+    "Fetch Upcoming Interviews": {
+      "main": [[
+        {"node": "Email to Candidate"},
+        {"node": "Email to Interviewer"}
+      ]]
+    }
+  },
+  "active": true
+}
