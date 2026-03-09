@@ -1,0 +1,115 @@
+{
+  "name": "RecruForce2 - CV Parsing Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "cv-parsing",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "cv-parsing"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.AI_SERVICE_URL }}/api/parse-cv",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "name": "Call AI Service - Parse CV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_API_URL }}/api/candidates/{{ $json.body.candidateId }}",
+        "method": "PUT",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.parsedData) }}",
+        "options": {}
+      },
+      "name": "Update Backend Candidate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "from": "={{ $env.SMTP_FROM }}",
+        "to": "={{ $json.email }}",
+        "subject": "Votre CV a été reçu - RecruForce2",
+        "emailFormat": "html",
+        "html": "<h2>Bonjour {{ $json.firstName }},</h2><p>Nous avons bien reçu votre CV et l'avons analysé avec succès.</p><p>Nos recruteurs examineront votre profil dans les prochains jours.</p><p>Cordialement,<br>L'équipe RecruForce2</p>"
+      },
+      "name": "Email to Candidate",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "from": "={{ $env.SMTP_FROM }}",
+        "to": "recruiter@recruforce2.com",
+        "subject": "Nouveau CV analysé - {{ $json.firstName }} {{ $json.lastName }}",
+        "emailFormat": "html",
+        "html": "<h2>Nouveau CV traité</h2><p><strong>Candidat:</strong> {{ $json.firstName }} {{ $json.lastName }}</p><p><strong>Email:</strong> {{ $json.email }}</p><p><strong>Compétences détectées:</strong> {{ $json.skills.length }}</p><p><a href='{{ $env.BACKEND_API_URL }}/candidates/{{ $json.candidateId }}'>Voir le profil</a></p>"
+      },
+      "name": "Notify Recruiter",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [850, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Call AI Service - Parse CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call AI Service - Parse CV": {
+      "main": [
+        [
+          {
+            "node": "Update Backend Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Backend Candidate": {
+      "main": [
+        [
+          {
+            "node": "Email to Candidate",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Recruiter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "tags": []
+}
