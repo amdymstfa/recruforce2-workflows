@@ -1,0 +1,31 @@
+# Environment
+.env
+.env.local
+
+# N8N Data
+n8n-data/
+.n8n/
+
+# Backups
+backups/*.json
+backups/*.sql
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Credentials (sensitive)
+credentials/
+secrets/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
