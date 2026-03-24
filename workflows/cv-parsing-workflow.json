@@ -3,74 +3,222 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "cv-parsing",
         "options": {}
       },
-      "name": "Webhook",
+      "name": "Webhook - CV Received",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [250, 300],
-      "webhookId": "cv-parsing"
+      "position": [
+        -848,
+        112
+      ],
+      "id": "f1253935-2402-4373-904f-f88cf3cd0834",
+      "webhookId": "a2868498-a898-4646-95cb-2c0ecc175555"
     },
     {
       "parameters": {
-        "url": "={{ $env.AI_SERVICE_URL }}/api/parse-cv",
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 1. Récupération des données du Webhook\nconst webhookBody = $node[\"Webhook - CV Received\"].json.body;\n\n// 2. Récupération et conversion du fichier binaire\nconst fileMetadata = $input.item.binary.file;\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'file');\nconst base64Content = buffer.toString('base64');\n\n/**\n * 3. Récupération des variables d'environnement\n * ATTENTION : On utilise les noms EXACTS définis dans le \n * \"environment\" du service n8n dans docker-compose.yml\n */\nconst aiBaseUrl = $env[\"AI_SERVICE_URL\"];\nconst backendBaseUrl = $env[\"BACKEND_API_URL\"]; // <--- Correction ici\nconst token = $env[\"BACKEND_API_TOKEN\"];\n\n// 4. Organisation des données pour les nœuds suivants\nreturn {\n  ai_request: {\n    url: `${aiBaseUrl}/api/parse-cv`,\n    payload: {\n      candidate_id: parseInt(webhookBody.candidateId),\n      filename: fileMetadata.fileName,\n      file_base64: base64Content\n    }\n  },\n  \n  backend_request: {\n    // Utilisation de la variable corrigée\n    url: `${backendBaseUrl}/api/candidates`,\n    authorization: `Bearer ${token}`\n  },\n  \n  // Correction de la partie meta pour les emails\n  meta: {\n    email: webhookBody.candidateEmail,\n    name: webhookBody.candidateName,\n    job: webhookBody.jobTitle\n  }\n};\n"
+      },
+      "name": "Code - Prepare Data & Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        112
+      ],
+      "id": "98b19594-922c-44d5-85c1-fdf6ccbb64bf"
+    },
+    {
+      "parameters": {
         "method": "POST",
+        "url": "={{ $json.ai_request.url }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify($json.ai_request.payload) }}",
+        "options": {
+          "timeout": 30000
+        }
       },
       "name": "Call AI Service - Parse CV",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [450, 300]
+      "position": [
+        -400,
+        112
+      ],
+      "id": "a12031c0-24bb-484c-bc02-76e58327a6d3"
     },
     {
       "parameters": {
-        "url": "={{ $env.BACKEND_API_URL }}/api/candidates/{{ $json.body.candidateId }}",
-        "method": "PUT",
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.parsing_confidence }}",
+              "operation": "largerEqual",
+              "value2": 0.5
+            }
+          ]
+        }
+      },
+      "name": "Parsing Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        112
+      ],
+      "id": "65598f3b-3fb0-494a-87c9-43b279616fb4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Code - Prepare Data & Files').item.json.backend_request.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Code - Prepare Data & Files').item.json.backend_request.authorization }}"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.parsedData) }}",
+        "jsonBody": "={\n  \"firstName\": \"{{ $json.first_name }}\",\n  \"lastName\": \"{{ $json.last_name }}\",\n  \"email\": \"{{ $json.email }}\",\n  \"phone\": \"{{ $json.phone }}\",\n  \"parsedCvId\": \"{{ $json.parsed_cv_id }}\",\n  \"address\": \"Safi, Morocco\",\n  \"skills\": {{ JSON.stringify($json.skills.map(s => s.name)) }},\n  \"experiences\": {{ JSON.stringify($json.experiences) }}\n}",
         "options": {}
       },
       "name": "Update Backend Candidate",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [650, 300]
+      "position": [
+        0,
+        0
+      ],
+      "id": "ebe6fd7e-4cab-4d7a-8322-d2fc8f831f8d"
     },
     {
       "parameters": {
-        "operation": "send",
-        "from": "={{ $env.SMTP_FROM }}",
-        "to": "={{ $json.email }}",
-        "subject": "Votre CV a été reçu - RecruForce2",
+        "fromEmail": "amdymoustapha011@gmail.com",
+        "toEmail": "={{ $node[\"Call AI Service - Parse CV\"].json.email }}",
+        "subject": "CV Received - RecruForce2",
         "emailFormat": "html",
-        "html": "<h2>Bonjour {{ $json.firstName }},</h2><p>Nous avons bien reçu votre CV et l'avons analysé avec succès.</p><p>Nos recruteurs examineront votre profil dans les prochains jours.</p><p>Cordialement,<br>L'équipe RecruForce2</p>"
+        "html": "=<h2>Hello {{ $node[\"Call AI Service - Parse CV\"].json.first_name }},</h2>\n<p>Thank you for submitting your CV. We have successfully received and analyzed your profile using our AI system.</p>\n<p>Our recruitment team will now review your experience and skills in detail. We will get back to you shortly regarding the next steps of the process.</p>\n<br>\n<p>Best regards,<br><b>The RecruForce2 Recruitment Team</b></p>",
+        "options": {}
       },
       "name": "Email to Candidate",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [850, 200]
+      "position": [
+        208,
+        0
+      ],
+      "id": "7ac70c76-be69-49b7-9acd-eafa7c34c78c",
+      "webhookId": "d80da36b-46b3-4389-bc7d-1fd96949f83c",
+      "credentials": {
+        "smtp": {
+          "id": "Ba1WF6T1TrConN63",
+          "name": "SMTP account"
+        }
+      }
     },
     {
       "parameters": {
-        "operation": "send",
-        "from": "={{ $env.SMTP_FROM }}",
-        "to": "recruiter@recruforce2.com",
-        "subject": "Nouveau CV analysé - {{ $json.firstName }} {{ $json.lastName }}",
+        "fromEmail": "amdymoustapha011@gmail.com",
+        "toEmail": "amdymoustapha011@gmail.com",
+        "subject": "=New CV analyzed - {{ $node['Call AI Service - Parse CV'].json.first_name }} {{ $node['Call AI Service - Parse CV'].json.last_name }}",
         "emailFormat": "html",
-        "html": "<h2>Nouveau CV traité</h2><p><strong>Candidat:</strong> {{ $json.firstName }} {{ $json.lastName }}</p><p><strong>Email:</strong> {{ $json.email }}</p><p><strong>Compétences détectées:</strong> {{ $json.skills.length }}</p><p><a href='{{ $env.BACKEND_API_URL }}/candidates/{{ $json.candidateId }}'>Voir le profil</a></p>"
+        "html": "=<h2>New Candidate Processed</h2>\n<p>An automated AI analysis has been completed for a new candidate.</p>\n<ul>\n  <li><strong>Full Name:</strong> {{ $node[\"Call AI Service - Parse CV\"].json.first_name }} {{ $node[\"Call AI Service - Parse CV\"].json.last_name }}</li>\n  <li><strong>Email:</strong> {{ $node[\"Call AI Service - Parse CV\"].json.email }}</li>\n  <li><strong>Skills Detected:</strong> {{ $node[\"Call AI Service - Parse CV\"].json.skills.length }}</li>\n  <li><strong>AI Confidence Score:</strong> {{ Math.round($node[\"Call AI Service - Parse CV\"].json.parsing_confidence * 100) }}%</li>\n</ul>\n<p>You can now view the full profile and manage the application in your dashboard.</p>\n<br>\n<p><i>This is an automated notification from RecruForce2 AI Service.</i></p>",
+        "options": {}
       },
       "name": "Notify Recruiter",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [850, 400]
+      "position": [
+        208,
+        208
+      ],
+      "id": "7c77c7b8-b9d7-47ab-8863-bb0df3a46a46",
+      "webhookId": "ec685257-e65f-4a84-8614-b58f88b546dd",
+      "credentials": {
+        "smtp": {
+          "id": "Ba1WF6T1TrConN63",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "amdymoustapha011@gmail.com",
+        "toEmail": "amdymoustapha011@gmail.com",
+        "subject": "=CV parsing failed - Candidate #{{ $node['Webhook - CV Received'].json.body.candidateId }}",
+        "emailFormat": "html",
+        "html": "=<h2>AI Parsing Failure</h2>\n<p>The system was unable to reliably extract data from a submitted CV.</p>\n<p><strong>Candidate ID:</strong> {{ $node[\"Webhook - CV Received\"].json.body.candidateId }}</p>\n<p><strong>Status:</strong> Confidence score was below the required threshold (50%).</p>\n<p>Please log in to the management console to review this CV manually and complete the candidate's profile.</p>\n<br>\n<p>System: <b>RecruForce2 Engine</b></p>",
+        "options": {}
+      },
+      "name": "Alert - Parsing Failed",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        0,
+        256
+      ],
+      "id": "16a3fd18-0672-4af5-984f-1b1876b3cab7",
+      "webhookId": "24944720-af9f-46ab-9800-4e52497ab370",
+      "credentials": {
+        "smtp": {
+          "id": "Ba1WF6T1TrConN63",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, message: 'CV parsed successfully' }) }}",
+        "options": {}
+      },
+      "name": "Webhook Response - Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ],
+      "id": "d1a183b3-286a-40d8-80a9-eb1d5489aaad"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, message: 'CV parsing confidence too low' }) }}",
+        "options": {}
+      },
+      "name": "Webhook Response - Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        208,
+        352
+      ],
+      "id": "46d4f799-fcdf-4f00-8505-63a77d2111a7"
     }
   ],
+  "pinData": {},
   "connections": {
-    "Webhook": {
+    "Webhook - CV Received": {
+      "main": [
+        [
+          {
+            "node": "Code - Prepare Data & Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Prepare Data & Files": {
       "main": [
         [
           {
@@ -85,7 +233,25 @@
       "main": [
         [
           {
+            "node": "Parsing Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsing Successful?": {
+      "main": [
+        [
+          {
             "node": "Update Backend Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert - Parsing Failed",
             "type": "main",
             "index": 0
           }
@@ -107,9 +273,41 @@
           }
         ]
       ]
+    },
+    "Email to Candidate": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert - Parsing Failed": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response - Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
-  "settings": {},
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "e2d8318f-8466-4a0f-b127-5923dfd905db",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "821022fbb143ffb33a949044a5fc391fc17e683aca351d1b0ca05a588744a8e4"
+  },
+  "id": "tdiu9iCuHE1GkJU9",
   "tags": []
 }

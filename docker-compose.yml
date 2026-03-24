@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # ===================================================
+  # PostgreSQL Database for N8N
+  # ===================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: recruforce2-n8n-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${N8N_DATABASE:-n8n}
+      POSTGRES_USER: ${N8N_DB_USER:-n8n_user}
+      POSTGRES_PASSWORD: ${N8N_DB_PASSWORD:-n8n_secure_password_2024}
+      POSTGRES_NON_ROOT_USER: ${N8N_DB_USER:-n8n_user}
+      POSTGRES_NON_ROOT_PASSWORD: ${N8N_DB_PASSWORD:-n8n_secure_password_2024}
+    volumes:
+      - n8n_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${N8N_DB_USER:-n8n_user} -d ${N8N_DATABASE:-n8n}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - n8n-network
+
+  # ===================================================
+  # N8N Workflow Automation
+  # ===================================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: recruforce2-n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${N8N_DATABASE:-n8n}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER:-n8n_user}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD:-n8n_secure_password_2024}
+      
+      # N8N Configuration
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678}
+      
+      # Authentication
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin@recruforce2.com}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-admin123}
+      
+      # Security
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change-this-to-a-random-32-char-key}
+      
+      # Execution
+      EXECUTIONS_MODE: ${EXECUTIONS_MODE:-regular}
+      EXECUTIONS_TIMEOUT: ${EXECUTIONS_TIMEOUT:-3600}
+      EXECUTIONS_TIMEOUT_MAX: ${EXECUTIONS_TIMEOUT_MAX:-7200}
+      EXECUTIONS_DATA_SAVE_ON_ERROR: ${EXECUTIONS_DATA_SAVE_ON_ERROR:-all}
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: ${EXECUTIONS_DATA_SAVE_ON_SUCCESS:-all}
+      
+      # Timezone
+      TZ: ${TZ:-Europe/Paris}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Europe/Paris}
+      
+      # Logging
+      N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-info}
+      
+      # External APIs (accessible depuis le conteneur)
+      BACKEND_API_URL: ${BACKEND_API_URL:-http://host.docker.internal:8080}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://host.docker.internal:8000}
+      
+      # SMTP
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-RecruForce2 <noreply@recruforce2.com>}
+      
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/workflows:ro  # Mount workflows in read-only mode
+    networks:
+      - n8n-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Pour accéder au Backend/AI sur localhost
+
+# ===================================================
+# Volumes
+# ===================================================
+volumes:
+  n8n_postgres_data:
+    name: recruforce2_n8n_postgres_data
+  n8n_data:
+    name: recruforce2_n8n_data
+
+# ===================================================
+# Networks
+# ===================================================
+networks:
+  n8n-network:
+    name: recruforce2_n8n_network
+    driver: bridge

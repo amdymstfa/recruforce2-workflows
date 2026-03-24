@@ -4,63 +4,321 @@
     {
       "parameters": {
         "rule": {
-          "interval": [{"field": "cronExpression", "expression": "0 9 * * *"}]
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
         }
       },
       "name": "Schedule - Daily 9AM",
-      "type": "n8n-nodes-base.cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [250, 300]
+      "position": [
+        -1568,
+        560
+      ],
+      "id": "1693c6ea-b353-46d4-8bbd-b1282e6c92da"
     },
     {
       "parameters": {
-        "url": "={{ $env.BACKEND_API_URL }}/api/interviews/upcoming",
-        "method": "GET"
+        "jsCode": "/**\n * Prépare l'URL et le Token pour la récupération des entretiens.\n * Utilise les noms de variables injectés dans le conteneur n8n.\n */\n\n// On récupère les variables d'environnement\n// Note: BACKEND_API_URL est le nom défini dans votre docker-compose\nconst backendBaseUrl = $env[\"BACKEND_API_URL\"];\nconst token = $env[\"BACKEND_API_TOKEN\"];\n\nreturn {\n  backend_config: {\n    // Construction de l'URL finale\n    url: `${backendBaseUrl}/api/interviews/upcoming`,\n    // Construction du header d'authentification\n    auth: `Bearer ${token}`\n  }\n};"
+      },
+      "name": "Prepare Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1376,
+        560
+      ],
+      "id": "536df7d5-40bc-45e1-954d-5ceb435005f9"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.backend_config.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.backend_config.auth }}"
+            }
+          ]
+        },
+        "options": {}
       },
       "name": "Fetch Upcoming Interviews",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [450, 300]
+      "position": [
+        -1168,
+        560
+      ],
+      "id": "f7de9875-fd8e-41b8-984c-09e01bd699a1"
     },
     {
       "parameters": {
-        "operation": "send",
-        "from": "={{ $env.SMTP_FROM }}",
-        "to": "={{ $item.candidateEmail }}",
-        "subject": "Rappel - Entretien demain",
-        "emailFormat": "html",
-        "html": "<h2>Bonjour {{ $item.candidateName }},</h2><p>Rappel de votre entretien demain:</p><p><strong>Date:</strong> {{ $item.dateTime }}</p><p><strong>Durée:</strong> {{ $item.durationMinutes }} min</p><p><strong>Lien:</strong> {{ $item.videoLink || $item.location }}</p>"
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ Array.isArray($json) ? $json.length : 1 }}",
+              "operation": "larger"
+            }
+          ]
+        }
       },
-      "name": "Email to Candidate",
-      "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2,
-      "position": [650, 200]
+      "name": "Has Interviews?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -976,
+        560
+      ],
+      "id": "b5b2d45a-a926-423a-bf85-699863d8d361"
     },
     {
       "parameters": {
-        "operation": "send",
-        "from": "={{ $env.SMTP_FROM }}",
-        "to": "={{ $item.interviewerEmail }}",
-        "subject": "Rappel - Entretien avec {{ $item.candidateName }}",
-        "emailFormat": "html",
-        "html": "<h2>Entretien demain</h2><p><strong>Candidat:</strong> {{ $item.candidateName }}</p><p><strong>Poste:</strong> {{ $item.jobOfferTitle }}</p><p><strong>Date:</strong> {{ $item.dateTime }}</p>"
+        "options": {}
       },
-      "name": "Email to Interviewer",
+      "name": "Split Interviews",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 2,
+      "position": [
+        -768,
+        464
+      ],
+      "id": "53304d2b-c0b9-4ec2-ac44-f77d5dd57aff"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.videoLink }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Has Video Link?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        464
+      ],
+      "id": "290d96f9-2492-4a40-afae-086268ac7df7"
+    },
+    {
+      "parameters": {
+        "fromEmail": "amdymoustapha011@gmail.com",
+        "toEmail": "={{ $json.candidateEmail }}",
+        "subject": "Reminder: Your interview tomorrow - RecruForce2",
+        "options": {}
+      },
+      "name": "Email Candidate - Remote",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [650, 400]
+      "position": [
+        -368,
+        352
+      ],
+      "id": "dd1c40d4-15cb-4ad2-ba7b-67359f28711b",
+      "webhookId": "b8893fe5-92cd-4bf5-8f67-0caf05d9c083",
+      "credentials": {
+        "smtp": {
+          "id": "Ba1WF6T1TrConN63",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "amdymoustapha011@gmail.com",
+        "toEmail": "={{ $json.candidateEmail }}",
+        "subject": "Reminder: Your interview tomorrow - RecruForce2",
+        "options": {}
+      },
+      "name": "Email Candidate - On-site",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        560
+      ],
+      "id": "3406c9f3-f4ce-4d4d-8fea-24e0f63d10a2",
+      "webhookId": "33e14980-8585-4dc4-9530-6d88440e8437",
+      "credentials": {
+        "smtp": {
+          "id": "Ba1WF6T1TrConN63",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "amdymoustapha011@gmail.com",
+        "toEmail": "={{ $json.interviewerEmail }}",
+        "subject": "=Reminder: Interview with {{ $json.candidateName }} tomorrow",
+        "options": {}
+      },
+      "name": "Email Interviewer",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        464
+      ],
+      "id": "cfa466ae-85a5-4bbc-b472-3312464ee002",
+      "webhookId": "ea08a5d9-ec66-4431-b21e-27d53ef3563e",
+      "credentials": {
+        "smtp": {
+          "id": "Ba1WF6T1TrConN63",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "amdymoustapha011@gmail.com",
+        "toEmail": "amdymoustapha011@gmail.com",
+        "subject": "Daily Summary: No interviews tomorrow",
+        "options": {}
+      },
+      "name": "No Interviews - Admin Notice",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        -768,
+        704
+      ],
+      "id": "2c83a33c-73b9-4f1c-9124-2fc7af394cf9",
+      "webhookId": "4644ca7d-7606-434c-92cb-958c617549e3",
+      "credentials": {
+        "smtp": {
+          "id": "Ba1WF6T1TrConN63",
+          "name": "SMTP account"
+        }
+      }
     }
   ],
+  "pinData": {},
   "connections": {
     "Schedule - Daily 9AM": {
-      "main": [[{"node": "Fetch Upcoming Interviews"}]]
+      "main": [
+        [
+          {
+            "node": "Prepare Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Upcoming Interviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Fetch Upcoming Interviews": {
-      "main": [[
-        {"node": "Email to Candidate"},
-        {"node": "Email to Interviewer"}
-      ]]
+      "main": [
+        [
+          {
+            "node": "Has Interviews?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Interviews?": {
+      "main": [
+        [
+          {
+            "node": "Split Interviews",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Interviews - Admin Notice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Interviews": {
+      "main": [
+        [
+          {
+            "node": "Has Video Link?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Video Link?": {
+      "main": [
+        [
+          {
+            "node": "Email Candidate - Remote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Candidate - On-site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Candidate - Remote": {
+      "main": [
+        [
+          {
+            "node": "Email Interviewer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Candidate - On-site": {
+      "main": [
+        [
+          {
+            "node": "Email Interviewer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": true
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "ed9db77f-8bb2-4195-825d-2ed665c98b38",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "821022fbb143ffb33a949044a5fc391fc17e683aca351d1b0ca05a588744a8e4"
+  },
+  "id": "3GxTDJGmqzwzFnNq",
+  "tags": []
 }

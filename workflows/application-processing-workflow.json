@@ -3,48 +3,126 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "application",
         "options": {}
       },
       "name": "Webhook - Application Submitted",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [250, 300]
+      "position": [
+        -608,
+        160
+      ],
+      "id": "5045c483-10fc-43b2-a4b5-6fe550d1dd70",
+      "webhookId": "fe32f937-68a7-4e74-9d7d-c68899b40482"
     },
     {
       "parameters": {
-        "url": "={{ $env.AI_SERVICE_URL }}/api/match-score",
         "method": "POST",
+        "url": "={{ $json.ai_request.url }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({candidateId: $json.body.candidateId, jobOfferId: $json.body.jobOfferId}) }}"
+        "jsonBody": "={{ $json.ai_request.payload }}",
+        "options": {
+          "timeout": 30000
+        }
       },
       "name": "Calculate Matching Score",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [450, 300]
+      "position": [
+        -192,
+        160
+      ],
+      "id": "bc30df8a-be3b-4a75-9e47-b608948a7a65",
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "url": "={{ $env.BACKEND_API_URL }}/api/applications/{{ $json.body.applicationId }}",
-        "method": "PATCH",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({matchingScore: $json.matching_score}) }}"
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.error !== undefined }}",
+              "value2": true
+            }
+          ]
+        }
       },
-      "name": "Update Application Score",
+      "name": "AI Service Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        0,
+        160
+      ],
+      "id": "dc21392a-b2f2-40b7-8785-c89ad8f11197"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.BACKEND_API_URL }}/api/applications/{{ $node[\"Webhook - Application Submitted\"].json.body.applicationId }}/status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.BACKEND_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Mark Application as Error",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [650, 300]
+      "position": [
+        208,
+        0
+      ],
+      "id": "450b66d7-8612-4854-8f51-7bff498d4088"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Code in JavaScript').item.json.backend_request.url }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "IN_PROCESS"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Code in JavaScript').item.json.backend_request.auth_header }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Update Application Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        208,
+        256
+      ],
+      "id": "ad265270-d861-4c98-859c-53d726368e9b"
     },
     {
       "parameters": {
         "conditions": {
           "number": [
             {
-              "value1": "={{ $json.matching_score }}",
+              "value1": "={{ $node[\"Calculate Matching Score\"].json.matching_score }}",
               "operation": "largerEqual",
-              "value2": 60
+              "value2": 70
             }
           ]
         }
@@ -52,53 +130,170 @@
       "name": "Is Qualified?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [850, 300]
+      "position": [
+        416,
+        256
+      ],
+      "id": "0a1b11fc-6512-4df6-92eb-4ba711f5f4bb"
     },
     {
       "parameters": {
-        "operation": "send",
-        "from": "={{ $env.SMTP_FROM }}",
-        "to": "={{ $json.body.candidateEmail }}",
-        "subject": "Bonne nouvelle concernant votre candidature !",
+        "fromEmail": "amdymoustapha011@gmail.com",
+        "toEmail": "={{ $node[\"Webhook - Application Submitted\"].json.body.candidateEmail }}",
+        "subject": "=Good news! Your application for the {{ $node[\"Webhook - Application Submitted\"].json.body.jobTitle }} position",
         "emailFormat": "html",
-        "html": "<h2>Félicitations !</h2><p>Votre profil correspond bien au poste.</p><p>Score: {{ $json.matching_score }}/100</p><p>Un recruteur vous contactera prochainement.</p>"
+        "html": "=<h2>Hello {{ $node[\"Webhook - Application Submitted\"].json.body.candidateName }},</h2>\n\n<p>We have carefully reviewed your application for the <strong>{{ $node[\"Webhook - Application Submitted\"].json.body.jobTitle }}</strong> position.</p>\n\n<p>We are pleased to inform you that your profile is a strong match! Our AI analysis has calculated a compatibility score of <strong>{{ $node[\"Calculate Matching Score\"].json.matching_score }}%</strong>.</p>\n\n<p>A member of our recruitment team will contact you shortly to schedule an initial interview and discuss the next steps of your candidacy.</p>\n\n<br>\n<p>Best regards,<br>\n<strong>The RecruForce2 Recruitment Team</strong></p>",
+        "options": {}
       },
-      "name": "Email - Accepted",
+      "name": "Email Candidat - Accepté",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [1050, 200]
+      "position": [
+        608,
+        160
+      ],
+      "id": "def15763-f898-43dd-9ae0-5359af44487b",
+      "webhookId": "f003855a-cfde-4f74-914c-429724090be2",
+      "credentials": {
+        "smtp": {
+          "id": "Ba1WF6T1TrConN63",
+          "name": "SMTP account"
+        }
+      }
     },
     {
       "parameters": {
-        "operation": "send",
-        "from": "={{ $env.SMTP_FROM }}",
-        "to": "={{ $json.body.candidateEmail }}",
-        "subject": "Votre candidature - RecruForce2",
+        "fromEmail": "amdymoustapha011@gmail.com",
+        "toEmail": "={{ $node[\"Webhook - Application Submitted\"].json.body.candidateEmail }}",
+        "subject": "Update regarding your application for {{ $node[\"Webhook - Application Submitted\"].json.body.jobTitle }}",
         "emailFormat": "html",
-        "html": "<h2>Merci pour votre candidature</h2><p>Nous avons examiné votre profil avec attention.</p><p>Malheureusement, votre profil ne correspond pas exactement aux exigences actuelles du poste.</p><p>Nous gardons votre CV dans notre base de données.</p>"
+        "html": "=<h2>Hello {{ $node[\"Webhook - Application Submitted\"].json.body.candidateName }},</h2>\n\n<p>Thank you for your interest in RecruForce2 and for applying for the <strong>{{ $node[\"Webhook - Application Submitted\"].json.body.jobTitle }}</strong> position.</p>\n\n<p>After reviewing your profile, we regret to inform you that we will not be moving forward with your application at this time as your current skills do not fully align with our specific requirements for this role.</p>\n\n<p>However, we will keep your profile in our database for future opportunities that may better match your background. We wish you the very best of luck with your professional search.</p>\n\n<br>\n<p>Best regards,<br>\n<strong>The RecruForce2 Recruitment Team</strong></p>",
+        "options": {}
       },
-      "name": "Email - Rejected",
+      "name": "Email Candidat - Refusé",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [1050, 400]
+      "position": [
+        608,
+        464
+      ],
+      "id": "b2bb8b89-3393-4c7d-b8c8-110cf8a1ad93",
+      "webhookId": "8b024a2d-e4b5-4899-8a9b-7924e50bc1b4",
+      "credentials": {
+        "smtp": {
+          "id": "Ba1WF6T1TrConN63",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Lecture des variables d'environnement Docker\n// ATTENTION : On utilise le nom défini dans le docker-compose pour n8n\nconst backendUrl = $env[\"BACKEND_API_URL\"]; \nconst aiUrl = $env[\"AI_SERVICE_URL\"];\nconst token = $env[\"BACKEND_API_TOKEN\"];\n\n// 2. Récupération des données du Webhook\nconst body = $node[\"Webhook - Application Submitted\"].json.body;\n\nreturn {\n  // Config pour l'appel IA\n  ai_request: {\n    url: `${aiUrl}/api/match-score`,\n    payload: {\n      candidate_id: body.candidateId,\n      job_offer_id: body.jobOfferId\n    }\n  },\n  \n  // Config pour les appels Backend (Status Update)\n  backend_request: {\n    url: `${backendUrl}/api/applications/${body.applicationId}/status`,\n    auth_header: `Bearer ${token}`\n  },\n  \n  // Données pour les emails\n  email_data: {\n    candidate_name: body.candidateName,\n    candidate_email: body.candidateEmail,\n    job_title: body.jobTitle\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        160
+      ],
+      "id": "9354bbda-b634-4774-bd94-4ffb90e5f806",
+      "name": "Code in JavaScript"
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook - Application Submitted": {
-      "main": [[{"node": "Calculate Matching Score"}]]
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Calculate Matching Score": {
-      "main": [[{"node": "Update Application Score"}]]
+      "main": [
+        [
+          {
+            "node": "AI Service Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Update Application Score": {
-      "main": [[{"node": "Is Qualified?"}]]
+    "AI Service Failed?": {
+      "main": [
+        [
+          {
+            "node": "Mark Application as Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Application Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Application Status": {
+      "main": [
+        [
+          {
+            "node": "Is Qualified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Is Qualified?": {
       "main": [
-        [{"node": "Email - Accepted"}],
-        [{"node": "Email - Rejected"}]
+        [
+          {
+            "node": "Email Candidat - Accepté",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Candidat - Refusé",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Calculate Matching Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
-  "active": true
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "efa65e06-2733-42ff-976c-c4dbde93e623",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "821022fbb143ffb33a949044a5fc391fc17e683aca351d1b0ca05a588744a8e4"
+  },
+  "id": "oQRzmy5F1meoMSeI",
+  "tags": []
 }
